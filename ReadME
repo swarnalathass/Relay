@@ -1,0 +1,91 @@
+# Relay — a ChatGPT-style chat app
+
+FastAPI backend + a vanilla HTML/JS chat UI. Streams responses token-by-token
+like ChatGPT, keeps conversation history in SQLite, and is built on Claude
+via the Anthropic API (swap-able for OpenAI — see "Using a different model" below).
+
+## Project layout
+
+```
+chatgpt-clone/
+├── backend/
+│   ├── main.py          FastAPI app + streaming /messages endpoint
+│   ├── database.py      SQLite layer (conversations + messages)
+│   ├── requirements.txt
+│   └── .env.example
+└── frontend/
+    └── index.html       Single-file chat UI (sidebar + streaming chat pane)
+```
+
+## 1. Backend setup
+
+```bash
+cd backend
+python3 -m venv venv
+source venv/bin/activate        # Windows: venv\Scripts\activate
+pip install -r requirements.txt
+
+cp .env.example .env
+# then edit .env and add your ANTHROPIC_API_KEY
+# (get one at https://console.anthropic.com/settings/keys)
+
+uvicorn main:app --reload --port 8000
+```
+
+Your API is now live at `http://localhost:8000`. Check `http://localhost:8000/api/health`.
+
+## 2. Frontend setup
+
+No build step — just serve the static file:
+
+```bash
+cd frontend
+python3 -m http.server 5500
+```
+
+Open `http://localhost:5500` in your browser.
+
+(If you open `index.html` directly via `file://`, some browsers block the
+fetch calls — serving it over `http://` avoids that.)
+
+## How it works
+
+- **POST /api/conversations** — creates a new chat, returns its id.
+- **POST /api/conversations/{id}/messages** — saves your message, then opens
+  a streaming connection (Server-Sent Events) to the model and forwards each
+  token to the browser as it's generated, exactly like ChatGPT's typing effect.
+- Each conversation's full message history is sent back to the model on every
+  turn, so it has context — this is how all chat APIs maintain memory (there's
+  no server-side "session" inside the model itself).
+- Messages are persisted to `backend/chat.db` (SQLite), so history survives restarts.
+
+## Using a different model
+
+The backend only touches the model in one place — `client.messages.stream(...)`
+in `main.py`. To swap in OpenAI's API instead:
+
+```python
+from openai import AsyncOpenAI
+client = AsyncOpenAI()
+stream = await client.chat.completions.create(
+    model="gpt-4o", messages=model_messages, stream=True
+)
+async for chunk in stream:
+    delta = chunk.choices[0].delta.content or ""
+    ...
+```
+
+The rest of the app (database, SSE plumbing, frontend) doesn't need to change.
+
+## Where to take this next
+
+- **Auth**: add user accounts (e.g. `fastapi-users` or a simple JWT layer) so
+  conversations are scoped per user instead of global.
+- **Editing/regenerating messages**: add `PATCH`/`POST /regenerate` endpoints.
+- **File uploads / images**: Anthropic's API accepts images and PDFs in the
+  `content` array — extend `SendMessageRequest` to accept attachments.
+- **Deploy**: backend to Railway/Render/Fly.io (needs a persistent disk or
+  swap SQLite for Postgres); frontend to Vercel/Netlify/Cloudflare Pages, or
+  fold it into the FastAPI app with `StaticFiles`.
+- **Rate limiting & cost control**: add `slowapi` or a reverse-proxy rate limiter
+  before exposing this publicly — model calls cost money per token.
