@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Relay</title>
+<style>
+  :root {
+    --ink: #1b1a17;
+    --paper: #f7f5f0;
+    --panel: #232220;
+    --panel-text: #e8e4da;
+    --accent: #c4501f;
+    --accent-soft: #e9c9a8;
+    --line: #d9d4c7;
+    --mono: 'IBM Plex Mono', 'SF Mono', Menlo, monospace;
+    --serif: 'Iowan Old Style', 'Georgia', serif;
+    --sans: -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    height: 100%; margin: 0; padding: 0;
+    background: var(--paper); color: var(--ink);
+    font-family: var(--sans);
+  }
+  #app { display: flex; height: 100vh; }
+
+  /* Sidebar */
+  #sidebar {
+    width: 260px; flex-shrink: 0;
+    background: var(--panel); color: var(--panel-text);
+    display: flex; flex-direction: column;
+    border-right: 1px solid #000;
+  }
+  #brand {
+    padding: 20px 18px 14px;
+    font-family: var(--serif); font-size: 22px; letter-spacing: 0.02em;
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+  }
+  #brand span { color: var(--accent); }
+  #new-chat {
+    margin: 14px 16px; padding: 10px 12px;
+    background: transparent; color: var(--panel-text);
+    border: 1px solid rgba(255,255,255,0.25); border-radius: 6px;
+    font-family: var(--mono); font-size: 13px; cursor: pointer;
+    text-align: left;
+  }
+  #new-chat:hover { border-color: var(--accent); color: var(--accent-soft); }
+  #conversations { flex: 1; overflow-y: auto; padding: 4px 8px; }
+  .conv-item {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 9px 10px; border-radius: 6px; cursor: pointer;
+    font-size: 13.5px; color: #c9c4b6; margin-bottom: 2px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .conv-item:hover { background: rgba(255,255,255,0.06); }
+  .conv-item.active { background: rgba(196,80,31,0.18); color: var(--panel-text); }
+  .conv-item .del { opacity: 0; color: #8a8577; font-size: 12px; }
+  .conv-item:hover .del { opacity: 1; }
+  .conv-item .del:hover { color: var(--accent); }
+  #sidebar-footer {
+    padding: 12px 18px; font-size: 11px; color: #8a8577;
+    border-top: 1px solid rgba(255,255,255,0.08); font-family: var(--mono);
+  }
+
+  /* Main pane */
+  #main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+  #messages { flex: 1; overflow-y: auto; padding: 40px 0 20px; }
+  #messages-inner { max-width: 720px; margin: 0 auto; padding: 0 24px; }
+  .empty-state {
+    height: 100%; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; text-align: center;
+    color: #9b9587;
+  }
+  .empty-state h1 { font-family: var(--serif); font-weight: 400; font-size: 30px; color: var(--ink); margin-bottom: 6px; }
+  .empty-state p { font-size: 14px; }
+
+  .msg { margin-bottom: 26px; }
+  .msg .role {
+    font-family: var(--mono); font-size: 11px; letter-spacing: 0.08em;
+    text-transform: uppercase; color: #9b9587; margin-bottom: 6px;
+  }
+  .msg.user .role { color: var(--accent); }
+  .msg .content { font-size: 15.5px; line-height: 1.65; white-space: pre-wrap; }
+  .msg.user .content {
+    background: #efe9dc; display: inline-block; padding: 10px 14px;
+    border-radius: 10px; border: 1px solid var(--line);
+  }
+  .cursor-blink {
+    display: inline-block; width: 7px; height: 15px; background: var(--accent);
+    margin-left: 2px; vertical-align: text-bottom; animation: blink 0.9s steps(1) infinite;
+  }
+  @keyframes blink { 50% { opacity: 0; } }
+
+  #composer {
+    border-top: 1px solid var(--line); padding: 16px 24px 22px; background: var(--paper);
+  }
+  #composer-inner {
+    max-width: 720px; margin: 0 auto; display: flex; gap: 10px;
+    background: #fff; border: 1px solid var(--line); border-radius: 12px;
+    padding: 10px 10px 10px 16px; align-items: flex-end;
+  }
+  #composer-inner:focus-within { border-color: var(--accent); }
+  #input {
+    flex: 1; border: none; outline: none; resize: none;
+    font-family: var(--sans); font-size: 15px; line-height: 1.5;
+    max-height: 160px; background: transparent; color: var(--ink);
+  }
+  #send {
+    background: var(--ink); color: var(--paper); border: none; border-radius: 8px;
+    width: 36px; height: 36px; cursor: pointer; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+  }
+  #send:hover { background: var(--accent); }
+  #send:disabled { opacity: 0.35; cursor: default; background: var(--ink); }
+  #hint { text-align: center; font-size: 11px; color: #9b9587; margin-top: 8px; font-family: var(--mono); }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="sidebar">
+    <div id="brand">rel<span>ay</span></div>
+    <button id="new-chat">+ New chat</button>
+    <div id="conversations"></div>
+    <div id="sidebar-footer">connected to /api</div>
+  </div>
+
+  <div id="main">
+    <div id="messages"><div id="messages-inner"></div></div>
+    <div id="composer">
+      <div id="composer-inner">
+        <textarea id="input" rows="1" placeholder="Message Relay..."></textarea>
+        <button id="send" title="Send">&uarr;</button>
+      </div>
+      <div id="hint">Enter to send &middot; Shift+Enter for a new line</div>
+    </div>
+  </div>
+</div>
+
+<script>
+const API = "http://localhost:8000/api";
+let activeConvId = null;
+let conversations = [];
+
+const els = {
+  conversations: document.getElementById("conversations"),
+  messages: document.getElementById("messages"),
+  messagesInner: document.getElementById("messages-inner"),
+  input: document.getElementById("input"),
+  send: document.getElementById("send"),
+  newChat: document.getElementById("new-chat"),
+};
+
+async function api(path, opts = {}) {
+  const res = await fetch(API + path, {
+    headers: { "Content-Type": "application/json" },
+    ...opts,
+  });
+  if (!res.ok) throw new Error(`API error ${res.status}`);
+  return res.json();
+}
+
+async function loadConversations() {
+  conversations = await api("/conversations");
+  renderSidebar();
+}
+
+function renderSidebar() {
+  els.conversations.innerHTML = "";
+  conversations.forEach((c) => {
+    const item = document.createElement("div");
+    item.className = "conv-item" + (c.id === activeConvId ? " active" : "");
+    item.innerHTML = `<span class="title"></span><span class="del">&times;</span>`;
+    item.querySelector(".title").textContent = c.title;
+    item.querySelector(".title").onclick = () => openConversation(c.id);
+    item.querySelector(".del").onclick = async (e) => {
+      e.stopPropagation();
+      await api(`/conversations/${c.id}`, { method: "DELETE" });
+      if (activeConvId === c.id) { activeConvId = null; renderMessages([]); }
+      loadConversations();
+    };
+    els.conversations.appendChild(item);
+  });
+}
+
+async function openConversation(id) {
+  activeConvId = id;
+  renderSidebar();
+  const conv = await api(`/conversations/${id}`);
+  renderMessages(conv.messages);
+}
+
+function renderMessages(messages) {
+  if (!messages.length) {
+    els.messagesInner.innerHTML = `
+      <div class="empty-state" style="height:70vh">
+        <h1>Where should we start?</h1>
+        <p>Ask anything — Relay streams the answer back as it's generated.</p>
+      </div>`;
+    return;
+  }
+  els.messagesInner.innerHTML = "";
+  messages.forEach((m) => appendMessageEl(m.role, m.content));
+  scrollToBottom();
+}
+
+function appendMessageEl(role, content) {
+  const div = document.createElement("div");
+  div.className = `msg ${role}`;
+  div.innerHTML = `<div class="role">${role === "user" ? "You" : "Relay"}</div><div class="content"></div>`;
+  div.querySelector(".content").textContent = content;
+  els.messagesInner.appendChild(div);
+  return div;
+}
+
+function scrollToBottom() {
+  els.messages.scrollTop = els.messages.scrollHeight;
+}
+
+async function ensureConversation() {
+  if (activeConvId) return activeConvId;
+  const conv = await api("/conversations", { method: "POST", body: JSON.stringify({ title: "New chat" }) });
+  activeConvId = conv.id;
+  await loadConversations();
+  return conv.id;
+}
+
+async function sendMessage() {
+  const text = els.input.value.trim();
+  if (!text) return;
+  els.input.value = "";
+  els.input.style.height = "auto";
+  els.send.disabled = true;
+
+  const convId = await ensureConversation();
+
+  if (els.messagesInner.querySelector(".empty-state")) els.messagesInner.innerHTML = "";
+  appendMessageEl("user", text);
+  const assistantEl = appendMessageEl("assistant", "");
+  const cursor = document.createElement("span");
+  cursor.className = "cursor-blink";
+  assistantEl.querySelector(".content").appendChild(cursor);
+  scrollToBottom();
+
+  const res = await fetch(`${API}/conversations/${convId}/messages`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ content: text }),
+  });
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let fullText = "";
+  const contentEl = assistantEl.querySelector(".content");
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split("\n\n");
+    buffer = lines.pop();
+    for (const line of lines) {
+      if (!line.startsWith("data: ")) continue;
+      const payload = JSON.parse(line.slice(6));
+      if (payload.delta) {
+        fullText += payload.delta;
+        contentEl.textContent = fullText;
+        contentEl.appendChild(cursor);
+        scrollToBottom();
+      } else if (payload.error) {
+        contentEl.textContent = `[error] ${payload.error}`;
+      } else if (payload.done) {
+        cursor.remove();
+      }
+    }
+  }
+
+  els.send.disabled = false;
+  loadConversations(); // picks up auto-generated title
+}
+
+els.send.onclick = sendMessage;
+els.input.addEventListener("keydown", (e) => {
+  if (e.key === "Enter" && !e.shiftKey) {
+    e.preventDefault();
+    sendMessage();
+  }
+});
+els.input.addEventListener("input", () => {
+  els.input.style.height = "auto";
+  els.input.style.height = Math.min(els.input.scrollHeight, 160) + "px";
+});
+els.newChat.onclick = () => {
+  activeConvId = null;
+  renderSidebar();
+  renderMessages([]);
+};
+
+loadConversations().then(() => renderMessages([]));
+</script>
+</body>
+</html>
